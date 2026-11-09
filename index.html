@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Leitor de Pacotes Logistics</title>
+
+    <!-- Biblioteca para geração de planilhas Excel (XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Biblioteca de Leitura de Código de Barras (ZXing) -->
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"></script>
+
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-card: #1e293b;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            padding: 1.25rem 0.75rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        header {
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.75rem;
+        }
+
+        header h1 {
+            font-size: 1.4rem;
+            color: #fff;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .main-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .main-actions .btn {
+            flex: 1;
+            min-width: 180px;
+            height: 50px;
+            font-size: 1rem;
+        }
+
+        .btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 0.65rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+        }
+
+        .btn:hover { background: var(--accent-hover); }
+        .btn:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
+        .btn-secondary { background: #334155; }
+        .btn-secondary:hover { background: #475569; }
+        .btn-success { background: var(--success); }
+        .btn-success:hover { background: #059669; }
+
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.25rem;
+        }
+
+        .grid-results {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-img-container {
+            height: 150px;
+            background: #090d16;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-img-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .card-body {
+            padding: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+            flex: 1;
+        }
+
+        .badge {
+            align-self: flex-start;
+            padding: 0.2rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-processing { background: #1e40af; color: #93c5fd; }
+        .badge-success { background: #065f46; color: #6ee7b7; }
+        .badge-error { background: #991b1b; color: #fca5a5; }
+
+        .address-box {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 0.75rem;
+            font-size: 0.85rem;
+            border: 1px solid var(--border);
+        }
+
+        .field {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+        }
+
+        .field:last-child { margin-bottom: 0; }
+        .field-label { color: var(--text-muted); }
+        .field-val { color: #fff; font-weight: 500; text-align: right; }
+
+        .geo-result {
+            background: #064e3b;
+            color: #a7f3d0;
+            padding: 0.4rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 0.4rem;
+        }
+
+        /* Modal Travado com dvh para compatibilidade total Mobile */
+        .camera-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh;
+            background: #000000;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.5rem max(0.5rem, env(safe-area-inset-bottom));
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .camera-modal.active { display: flex; }
+
+        .modal-header {
+            color: #fff;
+            text-align: center;
+            flex-shrink: 0;
+            margin-bottom: 0.25rem;
+            width: 100%;
+        }
+
+        .modal-header h2 { font-size: 1.05rem; }
+        .modal-header p { font-size: 0.75rem; color: var(--text-muted); }
+
+        /* Visor de Câmera com Foco Exclusivo (Máscara 100% Preta) */
+        .camera-viewport {
+            position: relative;
+            width: 100%;
+            max-width: 550px;
+            flex: 1;
+            min-height: 0;
+            max-height: 48vh;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-bottom: 0.25rem;
+            cursor: pointer;
+        }
+
+        .camera-viewport video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Moldura de Recorte com Máscara Opaca Preta */
+        .crop-frame {
+            position: absolute;
+            width: 96%;
+            height: 48%;
+            border: 3px solid var(--accent);
+            box-shadow: 0 0 0 9999px #000000;
+            border-radius: 12px;
+            pointer-events: none;
+            box-sizing: border-box;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .crop-frame-title {
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.2rem 0.6rem;
+            border-bottom-left-radius: 6px;
+            border-bottom-right-radius: 6px;
+            text-align: center;
+        }
+
+        .barcode-line {
+            display: none;
+            position: absolute;
+            top: 50%; left: 0%; width: 100%; height: 2px;
+            background-color: var(--danger);
+            box-shadow: 0 0 10px var(--danger);
+            animation: scanPulse 1.2s infinite alternate;
+        }
+
+        @keyframes scanPulse {
+            0% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .camera-modal.mode-barcode .crop-frame {
+            width: 96%;
+            height: 32%;
+            border-color: var(--danger);
+            box-shadow: 0 0 0 9999px #000000;
+        }
+
+        .camera-modal.mode-barcode .crop-frame-title { background: var(--danger); }
+        .camera-modal.mode-barcode .barcode-line { display: block; }
+
+        /* Animação Visual ao Tocar para Refocalizar */
+        .focus-ring {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border: 2px dashed #38bdf8;
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(1.4);
+            transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+            z-index: 10;
+        }
+
+        .focus-ring.active {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        /* Suporte para Celular Deitado / Orientação Paisagem */
+        @media (orientation: landscape) {
+            .camera-modal {
+                padding: 0.35rem 0.5rem;
+            }
+            .modal-header h2 { font-size: 0.95rem; }
+            .modal-header p { font-size: 0.7rem; }
+
+            .camera-viewport {
+                max-height: 58vh;
+            }
+
+            .crop-frame {
+                height: 55%;
+                width: 92%;
+            }
+
+            .camera-modal.mode-barcode .crop-frame {
+                height: 42%;
+                width: 94%;
+            }
+
+            .camera-controls {
+                margin-top: 0.25rem;
+            }
+
+            .camera-controls .btn {
+                height: 38px;
+                font-size: 0.85rem;
+                padding: 0.4rem 0.75rem;
+            }
+        }
+
+        /* Botões Travados na Parte Inferior */
+        .camera-controls {
+            display: flex;
+            gap: 0.5rem;
+            width: 100%;
+            max-width: 500px;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: auto;
+            padding-top: 0.25rem;
+        }
+
+        .camera-controls .btn { flex: 1; min-height: 44px; }
+        .btn-focus { flex: 0 0 auto !important; width: 50px; padding: 0 !important; font-size: 1.1rem; }
+
+        /* Painel de Edição e Revisão Otimizado em Pé (Portrait) */
+        .review-panel {
+            display: none;
+            width: 100%;
+            max-width: 500px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0.75rem;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+            min-height: 0;
+            max-height: 55vh; /* Limite de altura ajustado em pé para garantir visualização dos botões */
+            overflow-y: auto;
+            margin-bottom: 0.5rem;
+        }
+
+        .review-panel.active { display: flex; }
+
+        .edit-form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.35rem;
+        }
+
+        .edit-form-grid .full-width { grid-column: span 2; }
+
+        .edit-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .edit-group label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .edit-group input {
+            background: #0f172a;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.35rem 0.5rem;
+            color: #fff;
+            font-size: 0.82rem;
+        }
+
+        .edit-group input:focus {
+            border-color: var(--accent);
+            outline: none;
+        }
+
+        .loading-spinner-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            color: #93c5fd;
+            font-weight: 500;
+        }
+
+        .geo-preview-box {
+            background: #0f172a;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.55rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            grid-column: span 2;
+            margin-top: 0.15rem;
+        }
+
+        .geo-preview-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .geo-preview-content {
+            background: #064e3b;
+            color: #a7f3d0;
+            padding: 0.4rem 0.55rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .btn-regeo {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 0.18rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-regeo:hover { background: var(--accent-hover); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Leitor de Pacotes Logistics</h1>
+        <p>Fluxo contínuo de escaneamento de etiquetas e geocodificação direta.</p>
+    </header>
+
+	<div class="main-actions">
+		<button class="btn btn-success" id="btnStartFlow">📷 Fotos</button>
+		<button class="btn" id="btnExportXlsxMain" disabled>📥 Exportar XLSX</button>
+		<button class="btn btn-secondary" id="btnFullscreen">⛶ Tela Cheia</button>
+	</div>
+
+    <div class="summary-header">
+        <h3>Pacotes Capturados (<span id="countLabel">0</span>)</h3>
+    </div>
+    
+    <div class="grid-results" id="resultsGrid">
+        <p style="color: var(--text-muted); font-size: 0.9rem;" id="emptyMsg">Nenhuma etiqueta capturada nesta sessão. Clique em "Fotos" para começar.</p>
+    </div>
+</div>
+
+<!-- Modal Unificado de Câmera e Edição/Revisão -->
+<div class="camera-modal" id="cameraModal">
+    <div class="modal-header">
+        <h2 id="modalStepTitle">Passo 1/2: Posicione o Endereço</h2>
+        <p id="modalStepDesc">Enquadre apenas o texto do endereço no retângulo</p>
+    </div>
+
+    <div class="camera-viewport" id="viewportContainer" title="Clique para refocalizar">
+        <video id="cameraVideo" autoplay playsinline></video>
+        <div class="crop-frame" id="cropFrame">
+            <span class="crop-frame-title" id="cropFrameLabel">ENDEREÇO</span>
+            <div class="barcode-line"></div>
+        </div>
+        <div class="focus-ring" id="focusRing"></div>
+    </div>
+
+    <!-- Painel de Revisão/Edição com Scroll Interno -->
+    <div class="review-panel" id="reviewPanel">
+        <div id="loadingStatus" class="loading-spinner-box">
+            <span>⏳ Ainda em análise com a IA...</span>
+        </div>
+
+        <div id="editFormContainer" style="display: none;" class="edit-form-grid">
+            <div class="edit-group full-width">
+                <label>SPX TN (Código de Barras):</label>
+                <input type="text" id="editSpxTn" placeholder="Código de barras">
+            </div>
+            <div class="edit-group full-width">
+                <label>Logradouro:</label>
+                <input type="text" id="editLogradouro">
+            </div>
+            <div class="edit-group">
+                <label>Número:</label>
+                <input type="text" id="editNumero">
+            </div>
+            <div class="edit-group">
+                <label>Complemento:</label>
+                <input type="text" id="editComplemento">
+            </div>
+            <div class="edit-group">
+                <label>Bairro:</label>
+                <input type="text" id="editBairro">
+            </div>
+            <div class="edit-group">
+                <label>Cidade:</label>
+                <input type="text" id="editCidade">
+            </div>
+            <div class="edit-group">
+                <label>Estado (UF):</label>
+                <input type="text" id="editEstado">
+            </div>
+            <div class="edit-group">
+                <label>CEP:</label>
+                <input type="text" id="editCep">
+            </div>
+
+            <div class="geo-preview-box">
+                <div class="geo-preview-header">
+                    <span>Geocodificação (Google Maps):</span>
+                    <button class="btn-regeo" id="btnForceRegeo">🔄 Recalcular Ponto</button>
+                </div>
+                <div class="geo-preview-content" id="geoPreviewContent">
+                    <span>Aguardando dados...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botões Fixos Sempre Visíveis no Rodapé -->
+    <div class="camera-controls" id="cameraControls">
+        <button class="btn btn-secondary btn-focus" id="btnTriggerFocus" title="Ajustar Foco">🎯</button>
+        <button class="btn btn-secondary" id="btnStep1Voltar">Voltar</button>
+        <button class="btn btn-success" id="btnStep1Capture">📸 Capturar Endereço</button>
+        
+        <button class="btn btn-secondary" id="btnStep2Skip" style="display: none;">Pular Código</button>
+        
+        <button class="btn btn-secondary" id="btnStep3Voltar" style="display: none;">Voltar para Lista</button>
+        <button class="btn btn-success" id="btnStep3Next" style="display: none;">➕ Próxima Etiqueta</button>
+    </div>
+</div>
+
+<script>
+	// Substitua no index.html
+	const GEMINI_API_KEY = window.ENV_GEMINI_KEY || "";
+	const GOOGLE_MAPS_API_KEY = window.ENV_MAPS_KEY || "";
+
+    const btnStartFlow = document.getElementById('btnStartFlow');
+    const btnExportXlsxMain = document.getElementById('btnExportXlsxMain');
+    const resultsGrid = document.getElementById('resultsGrid');
+    const emptyMsg = document.getElementById('emptyMsg');
+    const countLabel = document.getElementById('countLabel');
+
+    const cameraModal = document.getElementById('cameraModal');
+    const cameraVideo = document.getElementById('cameraVideo');
+    const viewportContainer = document.getElementById('viewportContainer');
+    const cropFrame = document.getElementById('cropFrame');
+    const focusRing = document.getElementById('focusRing');
+    const modalStepTitle = document.getElementById('modalStepTitle');
+    const modalStepDesc = document.getElementById('modalStepDesc');
+    const cropFrameLabel = document.getElementById('cropFrameLabel');
+    const reviewPanel = document.getElementById('reviewPanel');
+    const loadingStatus = document.getElementById('loadingStatus');
+    const editFormContainer = document.getElementById('editFormContainer');
+
+    const btnTriggerFocus = document.getElementById('btnTriggerFocus');
+    const btnStep1Voltar = document.getElementById('btnStep1Voltar');
+    const btnStep1Capture = document.getElementById('btnStep1Capture');
+    const btnStep2Skip = document.getElementById('btnStep2Skip');
+    const btnStep3Voltar = document.getElementById('btnStep3Voltar');
+    const btnStep3Next = document.getElementById('btnStep3Next');
+    const btnForceRegeo = document.getElementById('btnForceRegeo');
+
+    const editSpxTn = document.getElementById('editSpxTn');
+    const editLogradouro = document.getElementById('editLogradouro');
+    const editNumero = document.getElementById('editNumero');
+    const editComplemento = document.getElementById('editComplemento');
+    const editBairro = document.getElementById('editBairro');
+    const editCidade = document.getElementById('editCidade');
+    const editEstado = document.getElementById('editEstado');
+    const editCep = document.getElementById('editCep');
+    const geoPreviewContent = document.getElementById('geoPreviewContent');
+
+    let imageQueue = [];
+    let mediaStream = null;
+    let currentStep = 1;
+    let currentItem = null;
+    let isScanningAuto = false;
+    let zxingReaderInstance = null;
+
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+	
+	const btnFullscreen = document.getElementById('btnFullscreen');
+	let wasFullscreenActive = false;
+
+	function requestSystemFullscreen() {
+		const docEl = document.documentElement;
+		try {
+			if (docEl.requestFullscreen) {
+				docEl.requestFullscreen().catch(() => {});
+			} else if (docEl.webkitRequestFullscreen) {
+				docEl.webkitRequestFullscreen();
+			} else if (docEl.msRequestFullscreen) {
+				docEl.msRequestFullscreen();
+			}
+		} catch (err) {
+			console.warn("Tela cheia não suportada ou bloqueada:", err);
+		}
+	}
+
+	function toggleFullscreen() {
+		if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+			wasFullscreenActive = true;
+			requestSystemFullscreen();
+		} else {
+			wasFullscreenActive = false;
+			try {
+				if (document.exitFullscreen) {
+					document.exitFullscreen().catch(() => {});
+				} else if (document.webkitExitFullscreen) {
+					document.webkitExitFullscreen();
+				} else if (document.msExitFullscreen) {
+					document.msExitFullscreen();
+				}
+			} catch (err) {
+				console.warn("Erro ao sair da tela cheia:", err);
+			}
+		}
+	}
+
+	// Vinculação do clique do botão
+	if (btnFullscreen) {
+		btnFullscreen.addEventListener('click', toggleFullscreen);
+	}
+
+	// Atualização de estado do botão ao alternar tela cheia
+	const handleFullscreenChange = () => {
+		if (document.fullscreenElement || document.webkitFullscreenElement) {
+			wasFullscreenActive = true;
+			if (btnFullscreen) btnFullscreen.innerText = "⛶ Sair da Tela Cheia";
+		} else {
+			if (btnFullscreen) btnFullscreen.innerText = "⛶ Tela Cheia";
+		}
+	};
+
+	document.addEventListener('fullscreenchange', handleFullscreenChange);
+	document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    function getZXingReader() {
+        if (!zxingReaderInstance && window.ZXing) {
+            try {
+                const hints = new Map();
+                const formats = [
+                    ZXing.BarcodeFormat.CODE_128,
+                    ZXing.BarcodeFormat.CODE_39,
+                    ZXing.BarcodeFormat.EAN_13,
+                    ZXing.BarcodeFormat.ITF
+                ];
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+                hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+                zxingReaderInstance = new ZXing.BrowserMultiFormatReader(hints);
+            } catch (e) {
+                console.warn("Falha ao configurar ZXing com hints:", e);
+                zxingReaderInstance = new ZXing.BrowserMultiFormatReader();
+            }
+        }
+        return zxingReaderInstance;
+    }
+
+    async function getCameraStream() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("SECURE_CONTEXT_REQUIRED");
+        }
+        try {
+            return await navigator.mediaDevices.getUserMedia({
+                video: { 
+                    facingMode: { ideal: "environment" }, 
+                    width: { ideal: 1920 }, 
+                    height: { ideal: 1080 },
+                    focusMode: { ideal: "continuous" }
+                },
+                audio: false
+            });
+        } catch (e) {
+            return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+    }
+
+    // Função para acionar recálculo/ajuste de foco da Câmera
+    async function triggerFocus(e) {
+        if (!mediaStream) return;
+        const track = mediaStream.getVideoTracks()[0];
+        if (!track) return;
+
+        // Animação do anel de foco no local clicado ou no centro
+        if (e && viewportContainer) {
+            const rect = viewportContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            focusRing.style.left = `${x}px`;
+            focusRing.style.top = `${y}px`;
+        } else {
+            focusRing.style.left = '50%';
+            focusRing.style.top = '50%';
+        }
+        focusRing.classList.add('active');
+        setTimeout(() => focusRing.classList.remove('active'), 600);
+
+        try {
+            const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+            if (capabilities.focusMode && (capabilities.focusMode.includes('single-shot') || capabilities.focusMode.includes('continuous'))) {
+                if (capabilities.focusMode.includes('single-shot')) {
+                    await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+                    await delay(300);
+                }
+                await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+            } else {
+                // Fallback universal: Re-aplica restrições da câmera para refocalizar o sensor
+                const constraints = track.getConstraints();
+                await track.applyConstraints(constraints);
+            }
+        } catch (err) {
+            console.log("Foco manual refocalizado via recalibração de restrição.");
+        }
+    }
+
+    btnTriggerFocus.addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerFocus();
+    });
+
+    viewportContainer.addEventListener('click', (e) => {
+        triggerFocus(e);
+    });
+
+    btnStartFlow.addEventListener('click', async () => {
+        try {
+            if (!mediaStream) {
+                mediaStream = await getCameraStream();
+                cameraVideo.srcObject = mediaStream;
+            }
+            cameraModal.classList.add('active');
+            setCameraStep(1);
+        } catch (err) {
+            if (err.message === "SECURE_CONTEXT_REQUIRED") {
+                alert("⚠️ Acesso à câmera exige conexão segura (HTTPS). Use ngrok ou cloudflared.");
+            } else {
+                alert(`Erro ao acessar a câmera (${err.name}): Verifique as permissões.`);
+            }
+        }
+    });
+
+    function stopCamera() {
+        isScanningAuto = false;
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+            mediaStream = null;
+        }
+        cameraModal.classList.remove('active');
+        cameraModal.classList.remove('mode-barcode');
+    }
+
+    function setCameraStep(step) {
+        currentStep = step;
+
+        if (step === 1) {
+            viewportContainer.style.display = "flex";
+            reviewPanel.classList.remove('active');
+            cameraModal.classList.remove('mode-barcode');
+
+            modalStepTitle.innerText = "Passo 1/2: Enquadre o Endereço";
+            modalStepDesc.innerText = "Posicione o texto do endereço dentro do retângulo azul";
+            cropFrameLabel.innerText = "ENDEREÇO";
+
+            btnTriggerFocus.style.display = "inline-flex";
+            btnStep1Voltar.style.display = "inline-flex";
+            btnStep1Capture.style.display = "inline-flex";
+            btnStep2Skip.style.display = "none";
+            btnStep3Voltar.style.display = "none";
+            btnStep3Next.style.display = "none";
+
+            currentItem = null;
+
+        } else if (step === 2) {
+            viewportContainer.style.display = "flex";
+            reviewPanel.classList.remove('active');
+            cameraModal.classList.add('mode-barcode');
+
+            modalStepTitle.innerText = "Passo 2/2: Escaneando Código de Barras...";
+            modalStepDesc.innerText = "Mantenha o código na linha vermelha. Leitura automática!";
+            cropFrameLabel.innerText = "BIPANDO...";
+
+            btnTriggerFocus.style.display = "inline-flex";
+            btnStep1Voltar.style.display = "none";
+            btnStep1Capture.style.display = "none";
+            btnStep2Skip.style.display = "inline-flex";
+            btnStep3Voltar.style.display = "none";
+            btnStep3Next.style.display = "none";
+
+            isScanningAuto = true;
+            startContinuousAutoScan();
+
+        } else if (step === 3) {
+            viewportContainer.style.display = "none";
+            reviewPanel.classList.add('active');
+
+            modalStepTitle.innerText = "Revisão do Pacote Bipado";
+            modalStepDesc.innerText = "Confira ou edite os dados extraídos abaixo";
+
+            btnTriggerFocus.style.display = "none";
+            btnStep1Voltar.style.display = "none";
+            btnStep1Capture.style.display = "none";
+            btnStep2Skip.style.display = "none";
+            btnStep3Voltar.style.display = "inline-flex";
+            btnStep3Next.style.display = "inline-flex";
+
+            populateReviewPanel();
+        }
+    }
+
+    btnStep1Capture.addEventListener('click', () => {
+        if (!cameraVideo.videoWidth) return;
+
+        const croppedDataUrl = captureCroppedRegion(cameraVideo, cropFrame);
+        const id = 'img_' + Math.random().toString(36).substr(2, 9);
+
+        currentItem = {
+            id,
+            dataUrl: croppedDataUrl,
+            spxTn: "",
+            status: 'processing',
+            parsedData: null,
+            geoData: null,
+            errorMsg: null,
+            promise: null
+        };
+
+        currentItem.promise = processImageWithAI(croppedDataUrl, GEMINI_API_KEY)
+            .then(async (parsed) => {
+                currentItem.parsedData = parsed;
+                const geo = await executeGoogleGeocoding(parsed.string_geocoding, GOOGLE_MAPS_API_KEY);
+                currentItem.geoData = geo;
+                currentItem.status = 'success';
+                updateMainGridCard(currentItem);
+                updateMainState();
+                return currentItem;
+            })
+            .catch(err => {
+                console.error(err);
+                currentItem.status = 'error';
+                currentItem.errorMsg = err.message || "Falha na leitura da IA";
+                updateMainGridCard(currentItem);
+                updateMainState();
+            });
+
+        imageQueue.push(currentItem);
+        renderCardInMainGrid(currentItem);
+
+        setCameraStep(2);
+    });
+
+    async function startContinuousAutoScan() {
+        while (isScanningAuto && currentStep === 2 && cameraModal.classList.contains('active')) {
+            if (cameraVideo.videoWidth > 0) {
+                const scannedText = await detectBarcodeFromVideo(cameraVideo, cropFrame);
+                if (scannedText && isScanningAuto) {
+                    isScanningAuto = false;
+                    currentItem.spxTn = scannedText;
+                    setCameraStep(3);
+                    break;
+                }
+            }
+            await delay(120);
+        }
+    }
+
+    btnStep2Skip.addEventListener('click', () => {
+        isScanningAuto = false;
+        currentItem.spxTn = "";
+        setCameraStep(3);
+    });
+
+    async function populateReviewPanel() {
+        editSpxTn.value = currentItem.spxTn || "";
+
+        if (currentItem.status === 'success') {
+            displayEditForm(currentItem.parsedData);
+        } else if (currentItem.status === 'error') {
+            loadingStatus.style.display = "flex";
+            loadingStatus.innerText = `❌ ${currentItem.errorMsg || 'Falha ao extrair dados da imagem.'}`;
+            editFormContainer.style.display = "none";
+        } else {
+            loadingStatus.style.display = "flex";
+            loadingStatus.innerText = "⏳ Ainda em análise com a IA...";
+            editFormContainer.style.display = "none";
+
+            try {
+                await currentItem.promise;
+                if (currentItem.status === 'success') {
+                    displayEditForm(currentItem.parsedData);
+                } else {
+                    loadingStatus.innerText = `❌ ${currentItem.errorMsg || 'Falha ao extrair dados da imagem.'}`;
+                }
+            } catch (e) {
+                loadingStatus.innerText = "❌ Erro durante o processamento.";
+            }
+        }
+    }
+
+    function displayEditForm(parsed) {
+        if (!parsed) return;
+        loadingStatus.style.display = "none";
+        editFormContainer.style.display = "grid";
+
+        editLogradouro.value = parsed.logradouro || "";
+        editNumero.value = parsed.numero || "";
+        editComplemento.value = parsed.complemento || "";
+        editBairro.value = parsed.bairro || "";
+        editCidade.value = parsed.cidade || "";
+        editEstado.value = parsed.estado || "";
+        editCep.value = parsed.cep || "";
+
+        updateReviewGeoBox();
+    }
+
+    function updateReviewGeoBox() {
+        const g = currentItem.geoData;
+        if (g) {
+            geoPreviewContent.style.background = "#064e3b";
+            geoPreviewContent.style.color = "#a7f3d0";
+            geoPreviewContent.innerHTML = `
+                <span>📍 Lat: ${parseFloat(g.lat).toFixed(5)}, Lon: ${parseFloat(g.lon).toFixed(5)}</span>
+                <a href="https://www.google.com/maps?q=${g.lat},${g.lon}" target="_blank" style="color: #6ee7b7; font-weight: 600; text-decoration: underline;">Testar no Maps ↗</a>
+            `;
+        } else {
+            geoPreviewContent.style.background = "#7f1d1d";
+            geoPreviewContent.style.color = "#fca5a5";
+            geoPreviewContent.innerHTML = `<span>⚠️ Endereço não localizado no Google Maps.</span>`;
+        }
+    }
+
+    async function triggerRegeocoding() {
+        if (!currentItem) return;
+
+        if (!currentItem.parsedData) {
+            currentItem.parsedData = {};
+        }
+
+        geoPreviewContent.style.background = "#1e40af";
+        geoPreviewContent.style.color = "#93c5fd";
+        geoPreviewContent.innerHTML = "<span>⏳ Geocodificando endereço...</span>";
+
+        const log = editLogradouro.value.trim();
+        const num = editNumero.value.trim();
+        const bai = editBairro.value.trim();
+        const cid = editCidade.value.trim();
+        const est = editEstado.value.trim();
+        const cep = editCep.value.trim();
+
+        const p = currentItem.parsedData;
+        p.logradouro = log;
+        p.numero = num;
+        p.complemento = editComplemento.value.trim();
+        p.bairro = bai;
+        p.cidade = cid;
+        p.estado = est;
+        p.cep = cep;
+        currentItem.spxTn = editSpxTn.value.trim();
+
+        let queryWithCep = `${log}, ${num}, ${bai}, ${cid} - ${est}, ${cep}`;
+        p.string_geocoding = queryWithCep;
+
+        let geo = await executeGoogleGeocoding(queryWithCep, GOOGLE_MAPS_API_KEY);
+
+        if (!geo && (log || cid)) {
+            let queryWithoutCep = `${log}, ${num}, ${bai}, ${cid} - ${est}`;
+            geo = await executeGoogleGeocoding(queryWithoutCep, GOOGLE_MAPS_API_KEY);
+        }
+
+        currentItem.geoData = geo;
+        currentItem.status = 'success';
+        updateReviewGeoBox();
+        updateMainGridCard(currentItem);
+        updateMainState();
+    }
+
+    [editLogradouro, editNumero, editBairro, editCidade, editEstado, editCep].forEach(input => {
+        input.addEventListener('change', triggerRegeocoding);
+    });
+
+    btnForceRegeo.addEventListener('click', triggerRegeocoding);
+
+    btnStep3Next.addEventListener('click', async () => {
+        await triggerRegeocoding();
+        setCameraStep(1);
+    });
+
+    btnStep3Voltar.addEventListener('click', async () => {
+        await triggerRegeocoding();
+        stopCamera();
+    });
+
+    btnStep1Voltar.addEventListener('click', () => {
+        stopCamera();
+    });
+
+    async function detectBarcodeFromVideo(videoEl, frameEl) {
+        const vWidth = videoEl.videoWidth;
+        const vHeight = videoEl.videoHeight;
+        const videoRect = videoEl.getBoundingClientRect();
+        const frameRect = frameEl.getBoundingClientRect();
+
+        const scaleX = vWidth / videoRect.width;
+        const scaleY = vHeight / videoRect.height;
+
+        const cropY = Math.max(0, (frameRect.top - videoRect.top) * scaleY);
+        const cropHeight = Math.min(vHeight - cropY, frameRect.height * scaleY);
+
+        if (cropHeight <= 0 || vWidth <= 0) return null;
+
+        const fullWidthCanvas = document.createElement('canvas');
+        fullWidthCanvas.width = vWidth;
+        fullWidthCanvas.height = cropHeight;
+        const ctx1 = fullWidthCanvas.getContext('2d');
+        ctx1.drawImage(videoEl, 0, cropY, vWidth, cropHeight, 0, 0, vWidth, cropHeight);
+
+        let result1 = await decodeCanvasImage(fullWidthCanvas);
+        if (result1) return result1;
+
+        const imgData = ctx1.getImageData(0, 0, vWidth, cropHeight);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            const contrast = (gray - 128) * 1.4 + 128;
+            d[i] = d[i + 1] = d[i + 2] = Math.max(0, Math.min(255, contrast));
+        }
+        ctx1.putImageData(imgData, 0, 0);
+
+        return await decodeCanvasImage(fullWidthCanvas);
+    }
+
+    async function decodeCanvasImage(canvas) {
+        if ('BarcodeDetector' in window) {
+            try {
+                const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'pdf417', 'itf'] });
+                const barcodes = await detector.detect(canvas);
+                if (barcodes.length > 0) return barcodes[0].rawValue;
+            } catch (e) {}
+        }
+
+        const reader = getZXingReader();
+        if (reader) {
+            try {
+                const img = new Image();
+                img.src = canvas.toDataURL('image/png');
+                await new Promise(r => img.onload = r);
+                const res = await reader.decodeFromImageElement(img);
+                if (res) return res.getText();
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    function captureCroppedRegion(videoEl, frameEl) {
+        const vWidth = videoEl.videoWidth;
+        const vHeight = videoEl.videoHeight;
+        const videoRect = videoEl.getBoundingClientRect();
+        const frameRect = frameEl.getBoundingClientRect();
+
+        const scaleX = vWidth / videoRect.width;
+        const scaleY = vHeight / videoRect.height;
+
+        const cropX = Math.max(0, (frameRect.left - videoRect.left) * scaleX);
+        const cropY = Math.max(0, (frameRect.top - videoRect.top) * scaleY);
+        const cropWidth = Math.min(vWidth - cropX, frameRect.width * scaleX);
+        const cropHeight = Math.min(vHeight - cropY, frameRect.height * scaleY);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoEl, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+        return canvas.toDataURL('image/jpeg', 0.85);
+    }
+
+    async function processImageWithAI(dataUrl, apiKey) {
+        const base64Data = dataUrl.split(',')[1];
+        
+        const promptText = `Analise este trecho recortado da etiqueta de envio e extraia os dados com precisão para finalidade de GEOCODIFICAÇÃO via Google Maps.
+
+REGRAS RÍGIDAS DE EXTRAÇÃO:
+1. Remova completamente ruídos como: nome do destinatário, CPF, número do pedido, código de barras, código de rastreamento, avisos de entrega e contagem de volumes.
+2. Mantenha no campo "complemento" estritamente informações secundárias (Apto, Bloco, Sala, Fundos, Ponto de referência). NUNCA inclua o complemento na "string_geocoding".
+3. Formate o CEP como 00000-000.
+4. Construa o campo "string_geocoding" omitindo o complemento, seguindo o padrão exato: "Logradouro, Número, Bairro, Cidade - UF, CEP".
+
+Retorne EXATAMENTE um objeto JSON no seguinte formato:
+{
+  "logradouro": "Ex: Av. Paulista",
+  "numero": "Ex: 1000",
+  "complemento": "Ex: Apto 42",
+  "bairro": "Ex: Bela Vista",
+  "cidade": "Ex: São Paulo",
+  "estado": "Ex: SP",
+  "cep": "Ex: 01310-100",
+  "string_geocoding": "Ex: Av. Paulista, 1000, Bela Vista, São Paulo - SP, 01310-100"
+}`;
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [
+                        { text: promptText },
+                        { inline_data: { mime_type: "image/jpeg", data: base64Data } }
+                    ]
+                }],
+                generationConfig: { response_mime_type: "application/json" }
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error?.message || `Erro HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        return JSON.parse(data.candidates[0].content.parts[0].text);
+    }
+
+    async function executeGoogleGeocoding(addressQuery, mapsApiKey) {
+        if (!addressQuery) return null;
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressQuery)}&key=${mapsApiKey}`;
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data.status === 'OK' && data.results.length > 0) {
+                const loc = data.results[0].geometry.location;
+                return { lat: loc.lat, lon: loc.lng, displayName: data.results[0].formatted_address };
+            }
+        } catch (e) {
+            console.warn("Falha no Google Maps:", e);
+        }
+        return null;
+    }
+
+    function renderCardInMainGrid(item) {
+        if (emptyMsg) emptyMsg.style.display = "none";
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.id = item.id;
+        card.innerHTML = `
+            <div class="card-img-container">
+                <img src="${item.dataUrl}" alt="Trecho do Endereço">
+            </div>
+            <div class="card-body">
+                <span class="badge badge-processing" id="status_${item.id}">Processando...</span>
+                <div class="address-box" id="output_${item.id}">
+                    <p style="color: var(--text-muted); font-size: 0.8rem;">Em análise pela IA...</p>
+                </div>
+            </div>
+        `;
+        resultsGrid.appendChild(card);
+        updateMainState();
+    }
+
+    function updateMainGridCard(item) {
+        const statusEl = document.getElementById(`status_${item.id}`);
+        const outputEl = document.getElementById(`output_${item.id}`);
+        if (!statusEl || !outputEl) return;
+
+        if (item.status === 'success') {
+            statusEl.className = 'badge badge-success';
+            statusEl.innerText = 'Concluído';
+
+            const p = item.parsedData || {};
+            const g = item.geoData;
+
+            let geoHtml = g ? `
+                <div class="geo-result">
+                    <span>📍 ${parseFloat(g.lat).toFixed(5)}, ${parseFloat(g.lon).toFixed(5)}</span>
+                    <a href="https://www.google.com/maps?q=${g.lat},${g.lon}" target="_blank" style="color: #6ee7b7;">Maps ↗</a>
+                </div>
+            ` : `<div class="geo-result" style="background:#7f1d1d; color:#fca5a5;">⚠️ Coordenada não localizada.</div>`;
+
+            outputEl.innerHTML = `
+                <div class="field"><span class="field-label">SPX TN:</span><span class="field-val" style="color:#93c5fd;">${item.spxTn || '(Sem Código)'}</span></div>
+                <div class="field"><span class="field-label">Endereço:</span><span class="field-val">${p.logradouro || '-'}, ${p.numero || '-'}</span></div>
+                <div class="field"><span class="field-label">Bairro:</span><span class="field-val">${p.bairro || '-'}</span></div>
+                <div class="field"><span class="field-label">Cidade:</span><span class="field-val">${p.cidade || '-'}/${p.estado || '-'}</span></div>
+                <div class="field"><span class="field-label">CEP:</span><span class="field-val">${p.cep || '-'}</span></div>
+                ${geoHtml}
+            `;
+        } else if (item.status === 'error') {
+            statusEl.className = 'badge badge-error';
+            statusEl.innerText = 'Erro na Leitura';
+            outputEl.innerHTML = `<p style="color:#fca5a5; font-size: 0.8rem;">${item.errorMsg || 'Falha na leitura da imagem'}</p>`;
+        }
+    }
+
+    function updateMainState() {
+        countLabel.innerText = imageQueue.length;
+        const hasSuccess = imageQueue.some(i => i.status === 'success');
+        btnExportXlsxMain.disabled = !hasSuccess;
+    }
+
+    btnExportXlsxMain.addEventListener('click', () => {
+        const successfulItems = imageQueue.filter(item => item.status === 'success' && item.parsedData);
+        if (successfulItems.length === 0) return;
+
+        const headers = ['AT ID', 'Sequence', 'Stop', 'SPX TN', 'Destination Address', 'Bairro', 'City', 'Zipcode/Postal code', 'Latitude', 'Longitude'];
+        const rows = [headers];
+
+        successfulItems.forEach(item => {
+            const p = item.parsedData;
+            const g = item.geoData;
+
+            let destAddress = p.logradouro ? `${p.logradouro}${p.numero ? ', ' + p.numero : ''}${p.complemento ? ', ' + p.complemento : ''}` : (p.string_geocoding || "");
+
+            rows.push([
+                "",
+                "",
+                "",
+                item.spxTn || "",
+                destAddress,
+                p.bairro || "",
+                p.cidade || "",
+                p.cep || "",
+                g ? parseFloat(g.lat) : "",
+                g ? parseFloat(g.lon) : ""
+            ]);
+        });
+
+        const worksheet = XLSX.utils.aoa_to_sheet(rows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+
+        const now = new Date();
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const aaaa = now.getFullYear();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+
+        XLSX.writeFile(workbook, `${dd}-${mm}-${aaaa}-${hh}-${min} PACOTES ESCANEADOS.xlsx`);
+    });
+</script>
+
+</body>
+</html>
