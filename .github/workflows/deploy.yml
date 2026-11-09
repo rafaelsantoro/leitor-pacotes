@@ -5,7 +5,6 @@ on:
     branches:
       - main
 
-# Permissões necessárias para publicar no GitHub Pages
 permissions:
   contents: read
   pages: write
@@ -17,20 +16,34 @@ concurrency:
 
 jobs:
   deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Substituir Secrets no HTML
+      - name: Substituir Secrets no HTML via Python
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAPS_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
-          sed -i 's|__GEMINI_KEY__|${{ secrets.GEMINI_API_KEY }}|g' index.html
-          sed -i 's|__MAPS_KEY__|${{ secrets.GOOGLE_MAPS_API_KEY }}|g' index.html
+          python3 -c "
+          import os
+          gemini = os.environ.get('GEMINI_KEY', '')
+          maps = os.environ.get('MAPS_KEY', '')
+          with open('index.html', 'r', encoding='utf-8') as f:
+              content = f.read()
+          content = content.replace('__GEMINI_KEY__', gemini).replace('__MAPS_KEY__', maps)
+          with open('index.html', 'w', encoding='utf-8') as f:
+              f.write(content)
+          "
 
       - name: Configurar Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
-      - name: Enviar artefatos
+      - name: Enviar artefato preparado
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
