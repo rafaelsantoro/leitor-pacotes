@@ -1067,27 +1067,34 @@
         return await decodeCanvasImage(fullWidthCanvas);
     }
 
-    async function decodeCanvasImage(canvas) {
-        if ('BarcodeDetector' in window) {
-            try {
-                const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'pdf417', 'itf'] });
-                const barcodes = await detector.detect(canvas);
-                if (barcodes.length > 0) return barcodes[0].rawValue;
-            } catch (e) {}
-        }
+	// Função de decodificação otimizada para evitar warnings do ZXing
+	async function decodeCanvasImage(canvas) {
+		if ('BarcodeDetector' in window) {
+			try {
+				const detector = new BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'pdf417', 'itf'] });
+				const barcodes = await detector.detect(canvas);
+				if (barcodes.length > 0) return barcodes[0].rawValue;
+			} catch (e) {}
+		}
 
-        const reader = getZXingReader();
-        if (reader) {
-            try {
-                const img = new Image();
-                img.src = canvas.toDataURL('image/png');
-                await new Promise(r => img.onload = r);
-                const res = await reader.decodeFromImageElement(img);
-                if (res) return res.getText();
-            } catch (e) {}
-        }
-        return null;
-    }
+		const reader = getZXingReader();
+		if (reader) {
+			try {
+				// Decodifica direto da memória do canvas
+				const res = await reader.decodeFromCanvas(canvas);
+				if (res) return res.getText();
+			} catch (e) {
+				try {
+					const img = new Image();
+					img.src = canvas.toDataURL('image/png');
+					await new Promise(r => img.onload = r);
+					const res = await reader.decodeFromImageElement(img);
+					if (res) return res.getText();
+				} catch (err) {}
+			}
+		}
+		return null;
+	}
 
     function captureCroppedRegion(videoEl, frameEl) {
         const vWidth = videoEl.videoWidth;
